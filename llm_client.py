@@ -51,20 +51,20 @@ class LLMClient:
                 timeout=10,
             )
             response.raise_for_status()
-        except requests.ConnectionError:
+        except requests.exceptions.ConnectionError:
             raise LLMUnavailableError(
                 "Ollama service is not reachable. "
                 "Please make sure Ollama is installed and running.\n"
                 "  Install: https://ollama.com/download\n"
                 "  Start:   ollama serve"
             )
-        except requests.Timeout:
+        except requests.exceptions.Timeout:
             raise LLMUnavailableError(
                 "Ollama service did not respond in time. "
                 "Please check that the Ollama service is running at "
                 f"{self.base_url}"
             )
-        except requests.HTTPError as exc:
+        except requests.exceptions.HTTPError as exc:
             raise LLMUnavailableError(
                 f"Ollama service returned an error: {exc}"
             )
@@ -127,9 +127,9 @@ class LLMClient:
                     self.max_retries,
                 )
             except (
-                requests.ConnectionError,
-                requests.Timeout,
-                requests.HTTPError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.HTTPError,
             ) as exc:
                 last_exception = exc
                 logger.warning(
@@ -210,9 +210,9 @@ class LLMClient:
             logger.info("Successfully pulled model '%s'", self.model)
             return True
         except (
-            requests.ConnectionError,
-            requests.Timeout,
-            requests.HTTPError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.HTTPError,
         ) as exc:
             logger.error("Failed to pull model '%s': %s", self.model, exc)
             return False
