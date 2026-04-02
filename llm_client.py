@@ -1,12 +1,13 @@
-"""LLM client for communicating with Ollama API."""
+"""LLM client for communicating with Ollama API (uses stdlib urllib only)."""
 
 from __future__ import annotations
 
 import json
 import logging
 import time
-
-import requests
+import urllib.error
+import urllib.request
+import urllib.parse
 
 from prompt_template import build_llm_payload
 
@@ -19,6 +20,15 @@ class LLMUnavailableError(Exception):
 
 class LLMGenerationError(Exception):
     """Raised when LLM generation failed after all retries."""
+
+
+class _HTTPError(Exception):
+    """Wrapper for HTTP-level errors (non-200 status)."""
+    def __init__(self, status_code: int, reason: str, body: str) -> None:
+        self.status_code = status_code
+        self.reason = reason
+        self.body = body
+        super().__init__(f"HTTP {status_code}: {reason}")
 
 
 class LLMClient:
@@ -35,6 +45,45 @@ class LLMClient:
         self.stream: bool = llm_config["stream"]
         self.config_dict: dict = config
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _request(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
+        """Send an HTTP request and return the parsed JSON response.
+
+        Raises:
+            ConnectionError: If the server is unreachable.
+            TimeoutError: If the request times out.
+            _HTTPError: If the server returns a non-200 status.
+        """
+        url = f"{self.base_url}{path}"
+        data = json.dumps(body).encode("utf-8") if body else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+
+        effective_timeout = timeout if timeout is not None else self.timeout
+        try:
+            with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as exc:
+            body_text = ""
+            try:
+                body_text = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            raise _HTTPError(exc.code, exc.reason, body_text)
+        except urllib.error.URLError as exc:
+            # Wrap as ConnectionError for consistent handling
+            raise ConnectionError(f"Cannot connect to {self.base_url}: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise TimeoutError(f"Request to {url} timed out after {effective_timeout}s") from exc
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def check_availability(self) -> bool:
         """Check whether the Ollama service is running and the configured model is available.
 
@@ -44,38 +93,25 @@ class LLMClient:
         Raises:
             LLMUnavailableError: If the service is unreachable or the model is not found.
         """
-        # Check service reachability
         try:
-            response = requests.get(
-                f"{self.base_url}/api/tags",
-                timeout=10,
-            )
-            response.raise_for_status()
-        except requests.exceptions.ConnectionError:
+            data = self._request("GET", "/api/tags", timeout=10)
+        except ConnectionError as exc:
             raise LLMUnavailableError(
                 "Ollama service is not reachable. "
                 "Please make sure Ollama is installed and running.\n"
                 "  Install: https://ollama.com/download\n"
                 "  Start:   ollama serve"
-            )
-        except requests.exceptions.Timeout:
+            ) from exc
+        except TimeoutError as exc:
             raise LLMUnavailableError(
                 "Ollama service did not respond in time. "
                 "Please check that the Ollama service is running at "
                 f"{self.base_url}"
-            )
-        except requests.exceptions.HTTPError as exc:
+            ) from exc
+        except _HTTPError as exc:
             raise LLMUnavailableError(
                 f"Ollama service returned an error: {exc}"
-            )
-
-        # Check if requested model is available
-        try:
-            data = response.json()
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise LLMUnavailableError(
-                f"Failed to parse Ollama model list: {exc}"
-            )
+            ) from exc
 
         available_models = [m.get("name", "") for m in data.get("models", [])]
 
@@ -111,9 +147,14 @@ class LLMClient:
         last_exception: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                response = self._send_request(payload)
-                result = response.json()
-                generated_text = result.get("response", "")
+                result = self._request("POST", "/api/generate", body=payload)
+
+                if self.stream:
+                    # Non-streaming request already returns the full response
+                    generated_text = result.get("response", "")
+                else:
+                    generated_text = result.get("response", "")
+
                 if generated_text:
                     logger.debug(
                         "LLM generation succeeded on attempt %d/%d",
@@ -126,11 +167,7 @@ class LLMClient:
                     attempt + 1,
                     self.max_retries,
                 )
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-                requests.exceptions.HTTPError,
-            ) as exc:
+            except (ConnectionError, TimeoutError, _HTTPError) as exc:
                 last_exception = exc
                 logger.warning(
                     "LLM request failed on attempt %d/%d: %s",
@@ -149,51 +186,6 @@ class LLMClient:
             f"Last error: {last_exception}"
         )
 
-    def _send_request(self, payload: dict) -> requests.Response:
-        """Send a generation request to the Ollama API.
-
-        Args:
-            payload: The JSON payload to send.
-
-        Returns:
-            The requests.Response object. For streaming requests, the response
-            body will contain the concatenated output from all chunks.
-
-        Raises:
-            requests.HTTPError: If the API returns a non-200 status code.
-        """
-        response = requests.post(
-            f"{self.base_url}/api/generate",
-            json=payload,
-            timeout=self.timeout,
-        )
-
-        if response.status_code != 200:
-            response.raise_for_status()
-
-        if not self.stream:
-            return response
-
-        # Stream mode: collect all chunks and concatenate response fields
-        collected_parts: list[str] = []
-        for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-            try:
-                chunk = json.loads(line)
-                part = chunk.get("response", "")
-                if part:
-                    collected_parts.append(part)
-            except (json.JSONDecodeError, ValueError):
-                logger.debug("Skipping non-JSON chunk: %s", line[:100])
-                continue
-
-        # Build a synthetic final response with concatenated text
-        full_text = "".join(collected_parts)
-        final_data = {"response": full_text}
-        response._content = json.dumps(final_data).encode("utf-8")
-        return response
-
     def pull_model(self) -> bool:
         """Pull the configured model from the Ollama registry.
 
@@ -201,18 +193,12 @@ class LLMClient:
             True if the pull succeeded, False otherwise.
         """
         try:
-            response = requests.post(
-                f"{self.base_url}/api/pull",
-                json={"name": self.model, "stream": False},
-                timeout=self.timeout,
+            self._request(
+                "POST", "/api/pull",
+                body={"name": self.model, "stream": False},
             )
-            response.raise_for_status()
             logger.info("Successfully pulled model '%s'", self.model)
             return True
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-            requests.exceptions.HTTPError,
-        ) as exc:
+        except (ConnectionError, TimeoutError, _HTTPError) as exc:
             logger.error("Failed to pull model '%s': %s", self.model, exc)
             return False
