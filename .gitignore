@@ -1,0 +1,28 @@
+# Output
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Config with local paths
+config.yaml
+
+# Logs
+*.log
+
+# Data (user provides their own)
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
