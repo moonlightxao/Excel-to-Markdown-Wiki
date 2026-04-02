@@ -12,6 +12,7 @@ from config import apply_cli_overrides, load_config, save_default_config
 from excel_parser import ExcelParser
 from md_writer import MDWriter
 from models import FaultCase
+from prompt_template import SYSTEM_PROMPT, build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--init", action="store_true", help="生成默认配置文件 config.yaml 并退出")
     parser.add_argument("--check", action="store_true", help="检查 LLM 服务可用性并退出")
     parser.add_argument("--dry-run", action="store_true", help="仅解析 Excel，不调用 LLM")
+    parser.add_argument("--save-prompts", action="store_true", help="保存提示词到输出目录（可配合外部大模型使用）")
     parser.add_argument("--sample", action="store_true", help="使用内置示例数据")
     parser.add_argument("-v", "--verbose", action="store_true", help="详细日志输出")
     return parser.parse_args()
@@ -64,10 +66,33 @@ def print_fault_case(fc: FaultCase, index: int) -> None:
         print(f"      恢复方案IDs: {d.recovery_ids}")
     print(f"  已关联恢复:  {len(fc.recoveries)} 个")
     for r in fc.recoveries:
-        print(f"    - [{r.recovery_id}] {r.name} ({r.plan_type})")
+        print(f"    - [{r.recovery_id}] {r.name} (工具: {r.tool})")
     if fc.missing_ids:
         print(f"  ⚠ 缺失IDs: {fc.missing_ids}")
     print(f"  数据完整:  {'是' if not fc.has_missing_data else '否'}")
+
+
+def _save_prompts(cases: list[FaultCase], config: dict) -> None:
+    """Save each case's prompt to the output directory."""
+    from md_writer import MDWriter
+
+    output_dir = Path(config["output"]["directory"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    gen_suggestions = config.get("llm", {}).get("generate_missing_suggestions", False)
+
+    # Save system prompt once
+    sys_prompt_path = output_dir / "system_prompt.txt"
+    sys_prompt_path.write_text(SYSTEM_PROMPT, encoding="utf-8")
+    print(f"  保存系统提示词: {sys_prompt_path.name}")
+
+    for fc in cases:
+        prompt = build_prompt(fc, generate_suggestions=gen_suggestions)
+        filename = f"{fc.phenomenon.fault_id}_{MDWriter.sanitize_filename(fc.phenomenon.name)}_prompt.txt"
+        content = f"=== System Prompt ===\n{SYSTEM_PROMPT}\n\n=== User Prompt ===\n{prompt}"
+        (output_dir / filename).write_text(content, encoding="utf-8")
+        print(f"  保存: {filename}")
+
+    print(f"\n已保存 {len(cases)} 个提示词到 {output_dir}/ 目录")
 
 
 def main() -> int:
@@ -132,14 +157,24 @@ def main() -> int:
     if missing_count:
         print(f"  其中 {missing_count} 个存在缺失关联数据")
 
-    # Dry-run mode: print results and exit
+    # Dry-run mode: print results and save prompts
     if args.dry_run:
         print("\n--- DRY-RUN 模式: 不调用 LLM ---\n")
         for i, fc in enumerate(cases):
             print_fault_case(fc, i)
         print(f"\n{'='*60}")
         print(f"总计: {len(cases)} 个案例, {missing_count} 个有缺失数据")
+
+        # Save prompts for external LLM use
+        print(f"\n保存提示词到 {config['output']['directory']}/ 目录...")
+        _save_prompts(cases, config)
         print("如需生成 Markdown，请去掉 --dry-run 参数运行。")
+        return 0
+
+    # Save-prompts mode: build prompts and save, no LLM
+    if args.save_prompts:
+        print(f"\n保存提示词到 {config['output']['directory']}/ 目录...")
+        _save_prompts(cases, config)
         return 0
 
     # Full mode: LLM generation
@@ -169,7 +204,8 @@ def main() -> int:
         print(f"  [{i+1}/{len(cases)}] 处理 {fault_label}...", end=" ", flush=True)
 
         try:
-            prompt = build_prompt(fc)
+            gen_suggestions = config.get("llm", {}).get("generate_missing_suggestions", False)
+            prompt = build_prompt(fc, generate_suggestions=gen_suggestions)
             markdown_content = llm_client.generate(prompt)
 
             # Validate generated markdown

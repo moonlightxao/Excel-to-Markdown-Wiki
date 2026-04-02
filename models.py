@@ -19,9 +19,9 @@ class RecoveryPlan:
     """A recovery/quick-recovery plan from Sheet 3."""
     recovery_id: str  # QRxxxx or Rxxxx
     name: str
-    plan_type: str  # "quick_recovery" or "recovery"
     steps: list[str] = field(default_factory=list)
     raw_steps: str = ""  # original text from Excel
+    tool: str = ""
 
 
 @dataclass
@@ -29,9 +29,10 @@ class DiagnosticMethod:
     """A diagnostic method from Sheet 2."""
     diagnostic_id: str  # Axxxx
     name: str
-    description: str = ""
     steps: str = ""
     recovery_ids: list[str] = field(default_factory=list)
+    tool: str = ""
+    result: str = ""
 
 
 @dataclass
@@ -41,6 +42,9 @@ class FaultPhenomenon:
     name: str
     description: str = ""
     diagnostic_ids: list[str] = field(default_factory=list)
+    category: str = ""
+    perception_method: str = ""
+    has_perception: str = ""
 
 
 @dataclass
@@ -55,6 +59,10 @@ class FaultCase:
     def has_missing_data(self) -> bool:
         return len(self.missing_ids) > 0
 
+    @property
+    def needs_llm_suggestions(self) -> bool:
+        return len(self.diagnostics) == 0 or len(self.recoveries) == 0 or self.has_missing_data
+
     def to_dict(self) -> dict:
         """Serialize to a JSON-friendly dict for LLM prompt."""
         diagnostics_data = []
@@ -67,22 +75,26 @@ class FaultCase:
                     recoveries_data.append({
                         "recovery_id": r.recovery_id,
                         "name": r.name,
-                        "type": r.plan_type,
                         "steps": r.steps,
+                        "tool": r.tool,
                     })
                 else:
                     recoveries_data.append(f"[缺失关联数据：ID {rid}]")
             diagnostics_data.append({
                 "diagnostic_id": d.diagnostic_id,
                 "name": d.name,
-                "description": d.description,
                 "steps": d.steps,
+                "tool": d.tool,
+                "result": d.result,
                 "recoveries": recoveries_data,
             })
         return {
             "fault_id": self.phenomenon.fault_id,
             "phenomenon_name": self.phenomenon.name,
             "description": self.phenomenon.description,
+            "category": self.phenomenon.category,
+            "perception_method": self.phenomenon.perception_method,
+            "has_perception": self.phenomenon.has_perception,
             "diagnostics": diagnostics_data,
             "missing_ids": self.missing_ids,
         }

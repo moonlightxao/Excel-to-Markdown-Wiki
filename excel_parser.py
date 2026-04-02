@@ -124,6 +124,9 @@ class ExcelParser:
         name_col = self._resolve_column(df, cfg, "name_column")
         desc_col = self._resolve_column(df, cfg, "description_column")
         diag_ref_col = self._resolve_column(df, cfg, "diagnostic_ref_column")
+        cat_col = self._try_resolve_column(df, cfg, "category_column")
+        perc_col = self._try_resolve_column(df, cfg, "perception_method_column")
+        has_perc_col = self._try_resolve_column(df, cfg, "has_perception_column")
 
         result: dict[str, FaultPhenomenon] = {}
         for _, row in df.iterrows():
@@ -140,6 +143,9 @@ class ExcelParser:
                 name=str(row.get(name_col, "")).strip(),
                 description=str(row.get(desc_col, "")).strip(),
                 diagnostic_ids=diagnostic_ids,
+                category=str(row.get(cat_col, "")).strip() if cat_col else "",
+                perception_method=str(row.get(perc_col, "")).strip() if perc_col else "",
+                has_perception=str(row.get(has_perc_col, "")).strip() if has_perc_col else "",
             )
 
         return result
@@ -149,9 +155,10 @@ class ExcelParser:
         cfg = self.sheets_cfg.get("diagnostic_method", {})
         id_col = self._resolve_column(df, cfg, "id_column")
         name_col = self._resolve_column(df, cfg, "name_column")
-        desc_col = self._resolve_column(df, cfg, "description_column")
         steps_col = self._resolve_column(df, cfg, "steps_column")
         rec_ref_col = self._resolve_column(df, cfg, "recovery_ref_column")
+        tool_col = self._try_resolve_column(df, cfg, "tool_column")
+        result_col = self._try_resolve_column(df, cfg, "result_column")
 
         result: dict[str, DiagnosticMethod] = {}
         for _, row in df.iterrows():
@@ -166,9 +173,10 @@ class ExcelParser:
             result[diag_id] = DiagnosticMethod(
                 diagnostic_id=diag_id,
                 name=str(row.get(name_col, "")).strip(),
-                description=str(row.get(desc_col, "")).strip(),
                 steps=str(row.get(steps_col, "")).strip(),
                 recovery_ids=recovery_ids,
+                tool=str(row.get(tool_col, "")).strip() if tool_col else "",
+                result=str(row.get(result_col, "")).strip() if result_col else "",
             )
 
         return result
@@ -178,9 +186,8 @@ class ExcelParser:
         cfg = self.sheets_cfg.get("recovery_plan", {})
         id_col = self._resolve_column(df, cfg, "id_column")
         name_col = self._resolve_column(df, cfg, "name_column")
-        type_col = self._resolve_column(df, cfg, "type_column")
         steps_col = self._resolve_column(df, cfg, "steps_column")
-        desc_col = self._resolve_column(df, cfg, "description_column")
+        tool_col = self._try_resolve_column(df, cfg, "tool_column")
 
         result: dict[str, RecoveryPlan] = {}
         for _, row in df.iterrows():
@@ -190,14 +197,14 @@ class ExcelParser:
                 continue
 
             raw_steps = str(row.get(steps_col, "")).strip()
-            steps = [s.strip() for s in raw_steps.split(self.id_separator) if s.strip()] if raw_steps else []
+            steps = [s.strip() for s in raw_steps.split("\n") if s.strip()] if raw_steps else []
 
             result[rec_id] = RecoveryPlan(
                 recovery_id=rec_id,
                 name=str(row.get(name_col, "")).strip(),
-                plan_type=str(row.get(type_col, "")).strip(),
                 steps=steps,
                 raw_steps=raw_steps,
+                tool=str(row.get(tool_col, "")).strip() if tool_col else "",
             )
 
         return result
@@ -314,6 +321,35 @@ class ExcelParser:
             f"DataFrame. Available columns: {list(df.columns)}"
         )
 
+    def _try_resolve_column(
+        self,
+        df: pd.DataFrame,
+        sheet_cfg: dict[str, Any],
+        cfg_key: str,
+    ) -> str | None:
+        """Like _resolve_column but returns None instead of raising."""
+        desired_name = sheet_cfg.get(cfg_key, "")
+        if not desired_name:
+            return None
+        if desired_name in df.columns:
+            return desired_name
+        candidate = self._fuzzy_match_column(df, cfg_key, desired_name)
+        if candidate is not None:
+            logger.warning(
+                "Column '%s' (config key '%s') not found; "
+                "auto-detected as '%s'",
+                desired_name,
+                cfg_key,
+                candidate,
+            )
+            return candidate
+        logger.debug(
+            "Optional column '%s' (config key '%s') not found, skipping",
+            desired_name,
+            cfg_key,
+        )
+        return None
+
     @staticmethod
     def _fuzzy_match_column(
         df: pd.DataFrame,
@@ -329,10 +365,15 @@ class ExcelParser:
             "id_column": ["ID", "id", "编号"],
             "name_column": ["名称", "名", "现象", "手段", "方案"],
             "description_column": ["描述", "说明"],
-            "steps_column": ["步骤", "执行"],
-            "diagnostic_ref_column": ["定界", "手段", "诊断"],
-            "recovery_ref_column": ["恢复", "方案"],
+            "steps_column": ["步骤", "执行", "详细"],
+            "diagnostic_ref_column": ["定界", "手段", "诊断", "方法"],
+            "recovery_ref_column": ["恢复", "方案", "建议"],
             "type_column": ["类型", "分类"],
+            "category_column": ["分类", "视角"],
+            "perception_method_column": ["感知", "监控"],
+            "has_perception_column": ["已有", "感知"],
+            "tool_column": ["工具", "平台"],
+            "result_column": ["结果"],
         }
 
         keywords = keyword_map.get(cfg_key)

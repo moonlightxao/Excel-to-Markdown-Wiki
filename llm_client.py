@@ -162,11 +162,25 @@ class LLMClient:
                         self.max_retries,
                     )
                     return generated_text
-                logger.warning(
-                    "LLM returned empty response on attempt %d/%d",
-                    attempt + 1,
-                    self.max_retries,
-                )
+
+                # Empty response — check if model used thinking mode
+                thinking = result.get("thinking", "")
+                if thinking:
+                    logger.warning(
+                        "LLM returned empty response but has thinking content "
+                        "(%d chars) on attempt %d/%d. "
+                        "Consider setting enable_thinking: false in config.",
+                        len(thinking),
+                        attempt + 1,
+                        self.max_retries,
+                    )
+                    logger.debug("Thinking content: %s", thinking[:500])
+                else:
+                    logger.warning(
+                        "LLM returned empty response on attempt %d/%d",
+                        attempt + 1,
+                        self.max_retries,
+                    )
             except (ConnectionError, TimeoutError, _HTTPError) as exc:
                 last_exception = exc
                 logger.warning(
