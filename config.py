@@ -43,8 +43,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "skip_empty_rows": True,
     },
     "llm": {
+        "provider": "ollama",
         "base_url": "http://localhost:11434",
         "model": "qwen2.5:7b",
+        "api_key": "",
         "timeout_seconds": 300,
         "max_retries": 3,
         "retry_delay_seconds": 5,

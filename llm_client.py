@@ -216,3 +216,27 @@ class LLMClient:
         except (ConnectionError, TimeoutError, _HTTPError) as exc:
             logger.error("Failed to pull model '%s': %s", self.model, exc)
             return False
+
+
+# ---------------------------------------------------------------------------
+# Client factory
+# ---------------------------------------------------------------------------
+
+
+def create_llm_client(config: dict):
+    """Create an LLM client based on the ``provider`` in config.
+
+    Args:
+        config: Application config dict.  ``config["llm"]["provider"]``
+            determines which backend to use.  Supported values are
+            ``"ollama"`` (default) and ``"openai"``.
+
+    Returns:
+        An instance of :class:`LLMClient` (Ollama) or
+        :class:`OpenAILLMClient` (OpenAI-compatible).
+    """
+    provider = config.get("llm", {}).get("provider", "ollama")
+    if provider == "openai":
+        from openai_client import OpenAILLMClient
+        return OpenAILLMClient(config)
+    return LLMClient(config)

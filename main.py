@@ -117,8 +117,8 @@ def main() -> int:
     if args.check:
         print("正在检查 LLM 服务...")
         try:
-            from llm_client import LLMClient
-            client = LLMClient(config)
+            from llm_client import create_llm_client
+            client = create_llm_client(config)
             client.check_availability()
             print(f"✓ LLM 服务可用，模型: {config['llm']['model']}")
             return 0
@@ -178,13 +178,13 @@ def main() -> int:
         return 0
 
     # Full mode: LLM generation
-    from llm_client import LLMClient, LLMUnavailableError, LLMGenerationError
+    from llm_client import LLMUnavailableError, LLMGenerationError, create_llm_client
     from prompt_template import build_prompt
 
     # Check LLM availability
     print("正在检查 LLM 服务...")
     try:
-        llm_client = LLMClient(config)
+        llm_client = create_llm_client(config)
         llm_client.check_availability()
         print(f"✓ LLM 服务就绪，模型: {config['llm']['model']}")
     except LLMUnavailableError as e:

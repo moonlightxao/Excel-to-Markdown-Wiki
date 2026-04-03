@@ -128,3 +128,31 @@ def build_llm_payload(prompt: str, config: dict) -> dict:
         },
     }
     return payload
+
+
+# ---------------------------------------------------------------------------
+# OpenAI Chat Completions payload builder
+# ---------------------------------------------------------------------------
+
+
+def build_openai_payload(prompt: str, config: dict) -> dict:
+    """Assemble the request payload for the OpenAI Chat Completions API.
+
+    Args:
+        prompt: The user prompt string (typically from build_prompt).
+        config: Application config dict containing an ``llm`` section.
+
+    Returns:
+        A dict with ``messages`` and keyword arguments for
+        ``client.chat.completions.create()``.
+    """
+    llm = config["llm"]
+    return {
+        "model": llm["model"],
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": llm["temperature"],
+        "stream": False,
+    }
