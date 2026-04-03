@@ -36,8 +36,9 @@ pip install -r requirements.txt
 - `pandas` — Excel 读取与数据处理
 - `openpyxl` — .xlsx 文件引擎
 - `pyyaml` — 配置文件解析
+- `openai` — OpenAI 兼容 API 客户端（使用 OpenAI 后端时需要）
 
-> LLM API 调用使用 Python 标准库 `urllib`，无需额外依赖。
+> Ollama 模式使用 Python 标准库 `urllib`，无需额外依赖。OpenAI 模式依赖 `openai` 库。
 
 ### 2. Ollama（LLM 推理服务）
 
@@ -145,18 +146,44 @@ excel:
 
 ## 配置 LLM
 
+支持两种 LLM 后端：**Ollama**（默认）和 **OpenAI 兼容 API**，通过 `provider` 字段切换。
+
+### Ollama 模式（默认）
+
 ```yaml
 llm:
-  base_url: "http://localhost:11434"  # Ollama 服务地址
-  model: "qwen2.5:7b"                 # 模型名称
-  timeout_seconds: 300                 # 单次请求超时（秒）
-  max_retries: 3                       # 失败重试次数
-  retry_delay_seconds: 5               # 重试间隔基数（指数退避）
-  concurrency: 1                       # 并发数（本地 Ollama 建议 1）
-  temperature: 0.3                     # 生成温度
-  stream: false                        # 是否流式输出
-  generate_missing_suggestions: true   # 为缺失数据生成 LLM 参考建议
+  provider: ollama                      # 后端类型：ollama 或 openai
+  base_url: "http://localhost:11434"    # Ollama 服务地址
+  model: "qwen2.5:7b"                  # 模型名称
+  timeout_seconds: 300
+  max_retries: 3
+  retry_delay_seconds: 5
+  concurrency: 1
+  temperature: 0.3
+  stream: false
+  generate_missing_suggestions: true
 ```
+
+### OpenAI 兼容模式
+
+适用于 OpenAI、DeepSeek、通义千问等任何兼容 OpenAI Chat Completions API 的服务：
+
+```yaml
+llm:
+  provider: openai                          # 切换为 OpenAI 后端
+  base_url: "https://api.openai.com/v1"    # API 地址（可替换为兼容服务的地址）
+  api_key: "sk-xxx"                         # API Key
+  model: "gpt-4"                            # 模型名称
+  timeout_seconds: 300
+  max_retries: 3
+  retry_delay_seconds: 5
+  temperature: 0.3
+```
+
+常用兼容服务的 `base_url` 示例：
+- DeepSeek：`https://api.deepseek.com/v1`
+- 通义千问（DashScope）：`https://dashscope.aliyuncs.com/compatible-mode/v1`
+- 本地 Ollama（OpenAI 兼容模式）：`http://localhost:11434/v1`
 
 也可以通过命令行覆盖：
 
