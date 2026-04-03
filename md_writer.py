@@ -57,6 +57,8 @@ class MDWriter:
         Path
             The path to the written (or existing) file.
         """
+        content = self.enrich_with_recovery_refs(fault_case, content)
+
         filename = self.build_filename(fault_case)
         filepath = self._output_dir / filename
 
@@ -70,6 +72,65 @@ class MDWriter:
         filepath.write_text(content, encoding="utf-8")
         logger.info("Wrote %s (%d bytes)", filepath, filepath.stat().st_size)
         return filepath
+
+    @staticmethod
+    def enrich_with_recovery_refs(fault_case: FaultCase, content: str) -> str:
+        """Ensure each diagnostic section lists its associated recovery IDs.
+
+        Scans *content* for ``### 定界手段 <ID>-...`` headings.  If a
+        heading's section does not already contain a ``**关联恢复方案**``
+        line, one is injected right after the heading based on
+        ``DiagnosticMethod.recovery_ids`` from *fault_case*.
+
+        Parameters
+        ----------
+        fault_case : FaultCase
+            The fault case providing the diagnostic-to-recovery mapping.
+        content : str
+            The Markdown content produced by the LLM.
+
+        Returns
+        -------
+        str
+            The (possibly modified) Markdown content.
+        """
+        # Build a lookup: diagnostic_id -> list of recovery_ids
+        diag_to_recoveries: dict[str, list[str]] = {
+            d.diagnostic_id: d.recovery_ids for d in fault_case.diagnostics
+        }
+
+        # Match ### headings for diagnostic sections
+        heading_pattern = re.compile(
+            r"^(###\s*定界手段\s*)([A-Za-z]+\d+)\s*[-–—]\s*.+?$",
+            re.MULTILINE,
+        )
+
+        lines = content.split("\n")
+        result_lines: list[str] = []
+        i = 0
+        while i < len(lines):
+            result_lines.append(lines[i])
+            match = heading_pattern.match(lines[i])
+            if match:
+                diag_id = match.group(2)
+                recovery_ids = diag_to_recoveries.get(diag_id, [])
+                # Check if the next few lines already contain a recovery ref
+                has_ref = False
+                peek_end = min(i + 5, len(lines))
+                for j in range(i + 1, peek_end):
+                    if "**关联恢复方案**" in lines[j]:
+                        has_ref = True
+                        break
+                    # Stop peeking at the next ### or ## heading
+                    if re.match(r"^#{1,3}\s", lines[j]):
+                        break
+
+                if not has_ref:
+                    ref_text = "、".join(recovery_ids) if recovery_ids else "无"
+                    result_lines.append(f"\n**关联恢复方案**：{ref_text}")
+            i += 1
+
+        return "\n".join(result_lines)
 
     @staticmethod
     def build_filename(fault_case: FaultCase) -> str:
