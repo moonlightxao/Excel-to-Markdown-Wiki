@@ -1,11 +1,9 @@
-"""Configuration management with YAML support and layered defaults."""
+"""Configuration management with layered defaults."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -74,34 +72,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
-def load_config(config_path: Path | None = None) -> dict[str, Any]:
-    """Load config from YAML file merged with defaults."""
-    config = deep_copy_dict(DEFAULT_CONFIG)
-    if config_path and config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
-            user_config = yaml.safe_load(f) or {}
-        config = deep_merge(config, user_config)
-    return config
+def load_config() -> dict[str, Any]:
+    """Load config from DEFAULT_CONFIG.
 
-
-def save_default_config(path: Path) -> None:
-    """Write DEFAULT_CONFIG to a YAML file for user reference."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("# Excel to Markdown Wiki 配置文件\n")
-        f.write("# 修改此文件以匹配你的 Excel 列名和 LLM 设置\n\n")
-        yaml.dump(DEFAULT_CONFIG, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge override into base dict. Returns new dict."""
-    result = deep_copy_dict(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
+    Users can modify DEFAULT_CONFIG directly in this file to change settings.
+    """
+    return deep_copy_dict(DEFAULT_CONFIG)
 
 
 def deep_copy_dict(d: dict) -> dict:
@@ -115,16 +91,3 @@ def deep_copy_dict(d: dict) -> dict:
         else:
             result[key] = value
     return result
-
-
-def apply_cli_overrides(config: dict[str, Any], args) -> dict[str, Any]:
-    """Apply CLI argument overrides to config."""
-    if getattr(args, "excel", None):
-        config["excel"]["file_path"] = args.excel
-    if getattr(args, "output", None):
-        config["output"]["directory"] = args.output
-    if getattr(args, "model", None):
-        config["llm"]["model"] = args.model
-    if getattr(args, "concurrency", None) is not None:
-        config["llm"]["concurrency"] = args.concurrency
-    return config

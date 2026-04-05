@@ -42,7 +42,7 @@ result/
 pip install -r requirements.txt
 ```
 
-依赖：`pandas`、`openpyxl`、`pyyaml`、`requests`（OpenAI 模式）
+依赖：`pandas`、`openpyxl`、`requests`（OpenAI 模式）
 
 ### LLM 服务
 
@@ -54,7 +54,7 @@ ollama serve
 ollama pull qwen2.5:7b
 ```
 
-**OpenAI 兼容 API：** 修改 `config.yaml` 中的 `provider`、`base_url`、`api_key`、`model` 即可切换。
+**OpenAI 兼容 API：** 修改 `config.py` 中的 `DEFAULT_CONFIG` 的 `llm` 部分即可切换。
 
 ## 使用方法
 
@@ -72,7 +72,7 @@ python main.py --full
 python main.py --full --excel path/to/data.xlsx
 ```
 
-> Excel 路径和输出目录等配置也可通过 `config.yaml` 修改，`--excel` 参数优先级高于配置文件。
+> Excel 路径和输出目录等配置可在 `config.py` 的 `DEFAULT_CONFIG` 中修改，`--excel` 参数优先级高于配置。
 
 ### 输出目录
 
@@ -123,16 +123,11 @@ result/
 
 ### 配置
 
-```yaml
-# config.yaml
-similarity_analysis:
-  enabled: true              # 开启相似性分析（仅 --full 模式生效）
-  timeout_seconds: 300       # 分析调用超时时间
-  max_phenomena: 50          # 最大分析数量
-
-excel:
-  sheets:
-    fault_phenomenon:
-      # ... 其他列配置 ...
-      layer_column: 故障表现层级   # 故障表现层级列名
+```python
+# config.py — DEFAULT_CONFIG 中修改
+"similarity_analysis": {
+    "enabled": True,              # 开启相似性分析（仅 --full 模式生效）
+    "timeout_seconds": 300,       # 分析调用超时时间
+    "max_phenomena": 50,          # 最大分析数量
+},
 ```

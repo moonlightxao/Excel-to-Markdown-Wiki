@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
         "--excel",
         type=str,
         default=None,
-        help="指定 Excel 文件路径，覆盖 config.yaml 中的配置",
+        help="指定 Excel 文件路径，覆盖 config.py 中的配置",
     )
     return parser.parse_args()
 
@@ -192,7 +192,7 @@ def main() -> int:
     )
 
     # Load config
-    config = load_config(Path("config.yaml"))
+    config = load_config()
 
     # CLI override for Excel file path
     if args.excel:
@@ -202,7 +202,7 @@ def main() -> int:
     excel_path = Path(config["excel"]["file_path"])
     if not excel_path.exists():
         print(f"错误: Excel 文件不存在: {excel_path}")
-        print("请在 config.yaml 中配置正确的 excel.file_path。")
+        print("请在 config.py 中配置正确的 excel.file_path。")
         return 1
 
     print(f"正在解析 Excel 文件: {excel_path}")
