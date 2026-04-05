@@ -36,9 +36,9 @@ pip install -r requirements.txt
 - `pandas` — Excel 读取与数据处理
 - `openpyxl` — .xlsx 文件引擎
 - `pyyaml` — 配置文件解析
-- `openai` — OpenAI 兼容 API 客户端（使用 OpenAI 后端时需要）
+- `requests` — OpenAI 兼容 API HTTP 客户端（使用 OpenAI 后端时需要）
 
-> Ollama 模式使用 Python 标准库 `urllib`，无需额外依赖。OpenAI 模式依赖 `openai` 库。
+> Ollama 模式使用 Python 标准库 `urllib`，无需额外依赖。OpenAI 模式依赖 `requests` 库。
 
 ### 2. Ollama（LLM 推理服务）
 

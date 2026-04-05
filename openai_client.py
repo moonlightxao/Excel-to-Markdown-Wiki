@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 
-from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
+import requests
 
 from llm_client import LLMGenerationError, LLMUnavailableError
 from prompt_template import build_openai_payload
@@ -29,12 +29,13 @@ class OpenAILLMClient:
         self.retry_delay: float = llm_config["retry_delay_seconds"]
         self.config_dict: dict = config
 
-        self._client = OpenAI(
-            api_key=llm_config.get("api_key", ""),
-            base_url=llm_config.get("base_url", "https://api.openai.com/v1"),
-            timeout=self.timeout,
-            max_retries=0,  # we handle retries ourselves
-        )
+        self.base_url: str = llm_config.get("base_url", "https://api.openai.com/v1")
+        self.api_key: str = llm_config.get("api_key", "")
+        self._url: str = f"{self.base_url.rstrip('/')}/chat/completions"
+        self._headers: dict = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     # ------------------------------------------------------------------
     # Public API
@@ -51,21 +52,25 @@ class OpenAILLMClient:
             LLMUnavailableError: If the service is unreachable or the model
                 is not found.
         """
+        models_url = f"{self.base_url.rstrip('/')}/models"
         try:
-            self._client.models.list()
-        except APIConnectionError as exc:
+            resp = requests.get(
+                models_url, headers=self._headers, timeout=self.timeout
+            )
+            resp.raise_for_status()
+        except requests.exceptions.ConnectionError as exc:
             raise LLMUnavailableError(
                 "OpenAI-compatible service is not reachable at "
-                f"{self._client.base_url}. "
+                f"{self.base_url}. "
                 "Please check the base_url and network settings."
             ) from exc
-        except APITimeoutError as exc:
+        except requests.exceptions.Timeout as exc:
             raise LLMUnavailableError(
                 "OpenAI-compatible service did not respond in time at "
-                f"{self._client.base_url}"
+                f"{self.base_url}"
             ) from exc
-        except APIStatusError as exc:
-            if exc.status_code == 401:
+        except requests.exceptions.HTTPError as exc:
+            if resp.status_code == 401:
                 raise LLMUnavailableError(
                     "Authentication failed. Please check your api_key in config."
                 ) from exc
@@ -73,8 +78,8 @@ class OpenAILLMClient:
             # the service reachable — just log a warning.
             logger.warning(
                 "Service returned HTTP %d on model list (non-fatal): %s",
-                exc.status_code,
-                exc.message,
+                resp.status_code,
+                str(exc),
             )
 
         logger.info("OpenAI-compatible service reachable, model: %s", self.model)
@@ -93,17 +98,20 @@ class OpenAILLMClient:
             LLMGenerationError: If generation fails after all retries.
         """
         payload = build_openai_payload(prompt, self.config_dict)
-        # Extract messages from payload; the rest are keyword args
-        messages = payload.pop("messages")
 
         last_exception: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                response = self._client.chat.completions.create(
-                    messages=messages,
-                    **payload,
+                response = requests.post(
+                    self._url,
+                    json=payload,
+                    headers=self._headers,
+                    timeout=self.timeout,
                 )
-                generated_text = response.choices[0].message.content or ""
+                response.raise_for_status()
+                generated_text = (
+                    response.json()["choices"][0]["message"]["content"] or ""
+                )
 
                 if generated_text:
                     logger.debug(
@@ -119,7 +127,11 @@ class OpenAILLMClient:
                     self.max_retries,
                 )
 
-            except (APIConnectionError, APITimeoutError, APIStatusError) as exc:
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.HTTPError,
+            ) as exc:
                 last_exception = exc
                 logger.warning(
                     "LLM request failed on attempt %d/%d: %s",
