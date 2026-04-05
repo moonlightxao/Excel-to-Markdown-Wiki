@@ -39,15 +39,29 @@ class ExcelParser:
 
     def parse(self, file_path: Path) -> list[FaultCase]:
         """Read an Excel file and return a list of FaultCase objects."""
-        file_path = Path(file_path)
-        logger.info("Parsing Excel file: %s", file_path)
+        phenomena, diagnostics, recoveries = self.parse_sheets_raw(file_path)
 
-        # Read all three sheets
+        # Resolve foreign keys and build FaultCase list
+        cases = self._resolve_foreign_keys(phenomena, diagnostics, recoveries)
+        logger.info("Built %d fault cases", len(cases))
+        return cases
+
+    def parse_sheets_raw(
+        self, file_path: Path
+    ) -> tuple[dict[str, FaultPhenomenon], dict[str, DiagnosticMethod], dict[str, RecoveryPlan]]:
+        """Read an Excel file and return raw parsed data from all three sheets.
+
+        Unlike :meth:`parse`, this does **not** resolve foreign keys — it
+        returns the three sheet-level dicts as-is, suitable for per-row
+        Markdown generation.
+        """
+        file_path = Path(file_path)
+        logger.info("Parsing Excel file (raw sheets): %s", file_path)
+
         fp_df = self._read_sheet(file_path, "fault_phenomenon")
         dm_df = self._read_sheet(file_path, "diagnostic_method")
         rp_df = self._read_sheet(file_path, "recovery_plan")
 
-        # Parse each sheet into typed lookup dicts
         phenomena = self._parse_fault_phenomena(fp_df)
         diagnostics = self._parse_diagnostics(dm_df)
         recoveries = self._parse_recoveries(rp_df)
@@ -58,11 +72,7 @@ class ExcelParser:
             len(diagnostics),
             len(recoveries),
         )
-
-        # Resolve foreign keys and build FaultCase list
-        cases = self._resolve_foreign_keys(phenomena, diagnostics, recoveries)
-        logger.info("Built %d fault cases", len(cases))
-        return cases
+        return phenomena, diagnostics, recoveries
 
     # ------------------------------------------------------------------
     # Sheet reading

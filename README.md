@@ -64,22 +64,19 @@ llm:
 ## 快速开始
 
 ```bash
-# 生成默认配置文件
-python main.py --init
+# 1. 复制并编辑配置文件（设置 Excel 路径、LLM 参数等）
+cp config.example.yaml config.yaml
 
-# 用示例数据验证解析逻辑（不需要 LLM）
-python main.py --sample --dry-run
+# 2. 生成故障现象、定界手段、恢复方案 Markdown（不需要 LLM）
+python main.py --sheets
 
-# 检查 LLM 服务是否可用
-python main.py --check
-
-# 用示例数据端到端生成 Markdown
-python main.py --sample
+# 3. 全量生成：上述三个 + LLM 恢复预案
+python main.py --full
 ```
 
 ## 配置 Excel 列名映射
 
-运行 `python main.py --init` 会生成 `config.yaml`。你需要根据实际 Excel 文件的列名修改映射关系。
+首次使用前需创建 `config.yaml`（可参考 `config.example.yaml` 模板），并根据实际 Excel 文件的列名修改映射关系。
 
 ### 配置结构
 
@@ -185,10 +182,17 @@ llm:
 - 通义千问（DashScope）：`https://dashscope.aliyuncs.com/compatible-mode/v1`
 - 本地 Ollama（OpenAI 兼容模式）：`http://localhost:11434/v1`
 
-也可以通过命令行覆盖：
+也可以通过修改 `config.yaml` 切换配置：
 
-```bash
-python main.py --model qwen2.5:3b --excel data/my_data.xlsx --output result/
+```yaml
+llm:
+  model: "qwen2.5:3b"
+
+excel:
+  file_path: "data/my_data.xlsx"
+
+output:
+  directory: "result/"
 ```
 
 ## LLM 参考建议（缺失数据）
@@ -213,21 +217,44 @@ python main.py --model qwen2.5:3b --excel data/my_data.xlsx --output result/
 
 ## 命令行参数
 
+程序支持两种互斥的运行模式：
+
 | 参数 | 说明 |
 |------|------|
-| `--config PATH` | 配置文件路径（默认 `./config.yaml`） |
-| `--excel PATH` | Excel 文件路径（覆盖配置） |
-| `--output DIR` | 输出目录（覆盖配置） |
-| `--model NAME` | LLM 模型名称（覆盖配置） |
-| `--concurrency N` | 并发数 |
-| `--init` | 生成默认配置文件并退出 |
-| `--check` | 检查 LLM 服务可用性并退出 |
-| `--dry-run` | 仅解析 Excel，不调用 LLM |
-| `--sample` | 使用内置示例数据 |
-| `-v, --verbose` | 详细日志输出 |
+| `--sheets` | 生成故障现象、定界手段、恢复方案 Markdown（不需要 LLM） |
+| `--full` | 全量生成：故障现象、定界手段、恢复方案 + LLM 恢复预案 |
+
+所有配置（Excel 路径、LLM 模型、输出目录等）均在 `config.yaml` 中设置。
 
 ## 输出
 
 生成的 Markdown 文件存放在 `output/` 目录，文件名格式为 `{故障ID}_{现象名称}.md`。
 
 程序还会生成 `index.md` 索引文件，汇总所有生成结果。
+
+### 按 Sheet 行生成独立 Markdown（`--sheets`）
+
+使用 `--sheets` 可直接从 Excel 每个 Sheet 的每一行生成独立的 Markdown 文件，**不需要 LLM 服务**：
+
+```bash
+python main.py --sheets
+```
+
+输出目录结构：
+
+```
+result/
+  故障现象/
+    UP0001_页面大量接口报错.md
+    AP0002_MQS消息重复.md
+  定界手段/
+    A0001_排查关键依赖平台是否异常.md
+    A0002_排查数据库CPU使用率是否异常.md
+    ...
+  恢复方案/
+    R0001_联系关键依赖平台支持人员协助处理.md
+    QR0002_数据库CPU异常恢复方案.md
+    ...
+```
+
+每个文件的标题格式为 `{编号}-{名称}`，内容包含该行数据的所有字段。多次运行采用增量覆盖策略（已有文件会被覆盖，未涉及的文件不会被删除）。

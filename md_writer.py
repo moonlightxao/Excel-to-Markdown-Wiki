@@ -12,7 +12,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from models import FaultCase
+from models import DiagnosticMethod, FaultCase, FaultPhenomenon, RecoveryPlan
 
 logger = logging.getLogger(__name__)
 
@@ -332,3 +332,146 @@ def _is_cjk(character: str) -> bool:
         or 0x3000 <= cp <= 0x303F
         or 0xFF00 <= cp <= 0xFFEF
     )
+
+
+# ------------------------------------------------------------------
+# SheetsMDWriter — per-row Markdown generation (no LLM)
+# ------------------------------------------------------------------
+
+class SheetsMDWriter:
+    """Generate per-row Markdown files for each Excel sheet.
+
+    Creates three subdirectories under *base_dir* and writes one ``.md``
+    file per row of each sheet.  Existing files are overwritten; files
+    from previous runs that are no longer in the Excel data are left
+    untouched (incremental overwrite strategy).
+    """
+
+    SUBDIR_PHENOMENON = "故障现象"
+    SUBDIR_DIAGNOSTIC = "定界手段"
+    SUBDIR_RECOVERY = "恢复方案"
+
+    def __init__(self, base_dir: str | Path = "result") -> None:
+        self._base_dir = Path(base_dir)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def write_all(
+        self,
+        phenomena: dict[str, FaultPhenomenon],
+        diagnostics: dict[str, DiagnosticMethod],
+        recoveries: dict[str, RecoveryPlan],
+    ) -> dict[str, int]:
+        """Generate Markdown files for all three sheet types.
+
+        Returns a dict with counts, e.g.
+        ``{"故障现象": 3, "定界手段": 4, "恢复方案": 5}``.
+        """
+        counts: dict[str, int] = {}
+        counts[self.SUBDIR_PHENOMENON] = self._write_phenomena(phenomena)
+        counts[self.SUBDIR_DIAGNOSTIC] = self._write_diagnostics(diagnostics)
+        counts[self.SUBDIR_RECOVERY] = self._write_recoveries(recoveries)
+        return counts
+
+    # ------------------------------------------------------------------
+    # Phenomenon
+    # ------------------------------------------------------------------
+
+    def _write_phenomena(self, phenomena: dict[str, FaultPhenomenon]) -> int:
+        subdir = self._base_dir / self.SUBDIR_PHENOMENON
+        subdir.mkdir(parents=True, exist_ok=True)
+        for p in phenomena.values():
+            filename = f"{p.fault_id}_{MDWriter.sanitize_filename(p.name)}.md"
+            content = self._build_phenomenon_md(p)
+            (subdir / filename).write_text(content, encoding="utf-8")
+            logger.info("Wrote %s/%s (%d bytes)", self.SUBDIR_PHENOMENON, filename, len(content.encode("utf-8")))
+        return len(phenomena)
+
+    @staticmethod
+    def _build_phenomenon_md(p: FaultPhenomenon) -> str:
+        lines: list[str] = [f"# {p.fault_id}-{p.name}", ""]
+        if p.description:
+            lines += ["## 故障描述", "", p.description, ""]
+        if p.category:
+            lines.append(f"- **分类**：{p.category}")
+        if p.perception_method:
+            lines.append(f"- **故障感知手段**：{p.perception_method}")
+        if p.has_perception:
+            lines.append(f"- **是否已有感知手段**：{p.has_perception}")
+        if p.diagnostic_ids:
+            lines.append(f"- **关联定界手段**：{'、'.join(p.diagnostic_ids)}")
+        lines.append("")  # trailing newline
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Diagnostic
+    # ------------------------------------------------------------------
+
+    def _write_diagnostics(self, diagnostics: dict[str, DiagnosticMethod]) -> int:
+        subdir = self._base_dir / self.SUBDIR_DIAGNOSTIC
+        subdir.mkdir(parents=True, exist_ok=True)
+        for d in diagnostics.values():
+            filename = f"{d.diagnostic_id}_{MDWriter.sanitize_filename(d.name)}.md"
+            content = self._build_diagnostic_md(d)
+            (subdir / filename).write_text(content, encoding="utf-8")
+            logger.info("Wrote %s/%s (%d bytes)", self.SUBDIR_DIAGNOSTIC, filename, len(content.encode("utf-8")))
+        return len(diagnostics)
+
+    @staticmethod
+    def _build_diagnostic_md(d: DiagnosticMethod) -> str:
+        lines: list[str] = [f"# {d.diagnostic_id}-{d.name}", ""]
+        if d.tool:
+            lines.append(f"- **定界工具**：{d.tool}")
+        if d.result:
+            lines.append(f"- **定界结果**：{d.result}")
+        if d.steps:
+            lines.append("- **定界步骤**：")
+            lines += _format_numbered_steps(d.steps)
+        if d.recovery_ids:
+            lines.append(f"- **关联恢复方案**：{'、'.join(d.recovery_ids)}")
+        lines.append("")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Recovery
+    # ------------------------------------------------------------------
+
+    def _write_recoveries(self, recoveries: dict[str, RecoveryPlan]) -> int:
+        subdir = self._base_dir / self.SUBDIR_RECOVERY
+        subdir.mkdir(parents=True, exist_ok=True)
+        for r in recoveries.values():
+            filename = f"{r.recovery_id}_{MDWriter.sanitize_filename(r.name)}.md"
+            content = self._build_recovery_md(r)
+            (subdir / filename).write_text(content, encoding="utf-8")
+            logger.info("Wrote %s/%s (%d bytes)", self.SUBDIR_RECOVERY, filename, len(content.encode("utf-8")))
+        return len(recoveries)
+
+    @staticmethod
+    def _build_recovery_md(r: RecoveryPlan) -> str:
+        lines: list[str] = [f"# {r.recovery_id}-{r.name}", ""]
+        if r.tool:
+            lines.append(f"- **恢复工具**：{r.tool}")
+        if r.steps:
+            lines.append("- **操作步骤**：")
+            lines += _format_numbered_steps_list(r.steps)
+        lines.append("")
+        return "\n".join(lines)
+
+
+def _strip_leading_number(text: str) -> str:
+    """Remove a leading '1.', '1、', '1)' style number prefix from *text*."""
+    return re.sub(r"^\s*\d+[.、)）]\s*", "", text)
+
+
+def _format_numbered_steps(raw_steps: str) -> list[str]:
+    """Parse a raw multi-line steps string into indented numbered list lines."""
+    steps = [_strip_leading_number(s.strip()) for s in raw_steps.split("\n") if s.strip()]
+    return [f"  {i+1}. {s}" for i, s in enumerate(steps)]
+
+
+def _format_numbered_steps_list(steps: list[str]) -> list[str]:
+    """Format a list of step strings into indented numbered list lines."""
+    cleaned = [_strip_leading_number(s) for s in steps]
+    return [f"  {i+1}. {s}" for i, s in enumerate(cleaned)]
