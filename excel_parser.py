@@ -137,6 +137,7 @@ class ExcelParser:
         cat_col = self._try_resolve_column(df, cfg, "category_column")
         perc_col = self._try_resolve_column(df, cfg, "perception_method_column")
         has_perc_col = self._try_resolve_column(df, cfg, "has_perception_column")
+        layer_col = self._try_resolve_column(df, cfg, "layer_column")
 
         result: dict[str, FaultPhenomenon] = {}
         for _, row in df.iterrows():
@@ -156,6 +157,7 @@ class ExcelParser:
                 category=str(row.get(cat_col, "")).strip() if cat_col else "",
                 perception_method=str(row.get(perc_col, "")).strip() if perc_col else "",
                 has_perception=str(row.get(has_perc_col, "")).strip() if has_perc_col else "",
+                layer=str(row.get(layer_col, "")).strip() if layer_col else "",
             )
 
         return result

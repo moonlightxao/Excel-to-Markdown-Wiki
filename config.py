@@ -21,6 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "category_column": "分类",
                 "perception_method_column": "故障感知手段",
                 "has_perception_column": "是否已有感知手段",
+                "layer_column": "故障表现层级",
             },
             "diagnostic_method": {
                 "sheet_name": "定界手段模板",
@@ -60,6 +61,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "directory": "output",
         "filename_pattern": "{fault_id}_{phenomenon_name}.md",
         "overwrite_existing": True,
+    },
+    "similarity_analysis": {
+        "enabled": False,
+        "timeout_seconds": 300,
+        "max_phenomena": 50,
     },
     "logging": {
         "level": "INFO",

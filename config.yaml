@@ -1,0 +1,48 @@
+# Excel to Markdown Wiki 配置文件
+# 修改此文件以匹配你的 Excel 列名和 LLM 设置
+
+excel:
+  file_path: sample_data/demo_fault_data.xlsx
+  sheets:
+    fault_phenomenon:
+      sheet_name: 故障现象场景清单模版
+      id_column: 编号
+      name_column: 故障现象
+      description_column: 现象描述
+      diagnostic_ref_column: 定界方法
+      layer_column: 故障表现层级
+    diagnostic_method:
+      sheet_name: 定界手段模板
+      id_column: 编号
+      name_column: 定界方法名称
+      steps_column: 详细定界方法
+      recovery_ref_column: 恢复方案建议
+    recovery_plan:
+      sheet_name: 恢复方案模板
+      id_column: 编号
+      name_column: 应对方案名
+      steps_column: 方案概述
+  id_separator: ','
+  skip_empty_rows: true
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen2.5:7b
+  api_key: ''
+  timeout_seconds: 300
+  max_retries: 3
+  retry_delay_seconds: 5
+  concurrency: 1
+  temperature: 0.3
+  stream: false
+similarity_analysis:
+  enabled: false
+  timeout_seconds: 300
+  max_phenomena: 50
+output:
+  directory: result
+  filename_pattern: '{fault_id}_{phenomenon_name}.md'
+  overwrite_existing: false
+logging:
+  level: INFO
+  file: excel2md.log

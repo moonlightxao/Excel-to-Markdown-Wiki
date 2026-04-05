@@ -130,11 +130,13 @@ class LLMClient:
         logger.info("LLM model '%s' is available", self.model)
         return True
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, system_prompt: str | None = None) -> str:
         """Generate text from the LLM using the given prompt.
 
         Args:
             prompt: The full prompt string to send.
+            system_prompt: Optional system prompt override. When None, uses
+                the default SYSTEM_PROMPT from prompt_template.
 
         Returns:
             The generated text from the LLM.
@@ -142,7 +144,7 @@ class LLMClient:
         Raises:
             LLMGenerationError: If generation fails after all retries.
         """
-        payload = build_llm_payload(prompt, self.config_dict)
+        payload = build_llm_payload(prompt, self.config_dict, system_prompt=system_prompt)
 
         last_exception: Exception | None = None
         for attempt in range(self.max_retries):

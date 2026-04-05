@@ -27,6 +27,9 @@ SYSTEM_PROMPT = (
     "6. 保留数据中的缺失标记（如 `[缺失关联数据：ID xxxx]`），不得删除或修改。\n"
     "7. 当被要求生成参考建议时，在文档末尾添加「## 参考建议（LLM 生成）」章节，"
     "用 `> [!NOTE]` 引用块明确标注为 LLM 参考建议，提示用户根据实际情况调整。\n"
+    "8. 当数据中包含「来自相似故障的定界手段和恢复方案」时，请将它们整合到"
+    "「## 定界手段」和「## 恢复方案」章节中，并在每个整合的条目标题后标注来源，"
+    "格式为「（来自相似故障 {source_fault_id}-{source_fault_name}）」。\n"
 )
 
 # ---------------------------------------------------------------------------
@@ -44,6 +47,9 @@ def build_prompt(fault_case: FaultCase, generate_suggestions: bool = False) -> s
     When *generate_suggestions* is True and the fault case has missing data,
     additional instructions are appended asking the LLM to generate reference
     diagnostic methods and/or recovery plans.
+
+    When the fault case has merged data from similar phenomena, the prompt
+    includes instructions for integrating those into the output document.
 
     Args:
         fault_case: A fully resolved FaultCase object.
@@ -77,6 +83,17 @@ def build_prompt(fault_case: FaultCase, generate_suggestions: bool = False) -> s
         f"```json\n{data_json}\n```"
     )
 
+    if fault_case.merged_diagnostics or fault_case.merged_recoveries:
+        prompt += (
+            "\n\n"
+            "**重要**：上述 JSON 数据中包含 `merged_from_similar` 字段，"
+            "这些是来自相似故障现象的定界手段和恢复方案（已通过 LLM 相似性分析确认）。"
+            "请将它们整合到本文档的「## 定界手段」和「## 恢复方案」章节中，"
+            "与原有的定界手段和恢复方案并列展示。"
+            "在每个来自相似故障的条目标题后标注来源，"
+            "格式为「（来自相似故障 {source_fault_id}-{source_fault_name}）」。"
+        )
+
     if generate_suggestions and fault_case.needs_llm_suggestions:
         missing_items: list[str] = []
         if len(fault_case.diagnostics) == 0:
@@ -100,18 +117,21 @@ def build_prompt(fault_case: FaultCase, generate_suggestions: bool = False) -> s
 
     return prompt
 
+
 # ---------------------------------------------------------------------------
 # Ollama API payload builder
 # ---------------------------------------------------------------------------
 
 
-def build_llm_payload(prompt: str, config: dict) -> dict:
+def build_llm_payload(prompt: str, config: dict, system_prompt: str | None = None) -> dict:
     """Assemble the full request payload for the Ollama /api/generate endpoint.
 
     Args:
         prompt: The user prompt string (typically from build_prompt).
         config: Application config dict containing an ``llm`` section with at
             least ``model`` and ``temperature`` keys.
+        system_prompt: Optional system prompt override. When None, uses the
+            default SYSTEM_PROMPT.
 
     Returns:
         A dict ready to be JSON-encoded and sent to Ollama.
@@ -119,7 +139,7 @@ def build_llm_payload(prompt: str, config: dict) -> dict:
     llm = config["llm"]
     payload = {
         "model": llm["model"],
-        "system": SYSTEM_PROMPT,
+        "system": system_prompt or SYSTEM_PROMPT,
         "prompt": prompt,
         "stream": False,
         "think": llm.get("enable_thinking", False),
@@ -135,12 +155,14 @@ def build_llm_payload(prompt: str, config: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def build_openai_payload(prompt: str, config: dict) -> dict:
+def build_openai_payload(prompt: str, config: dict, system_prompt: str | None = None) -> dict:
     """Assemble the request payload for the OpenAI Chat Completions API.
 
     Args:
         prompt: The user prompt string (typically from build_prompt).
         config: Application config dict containing an ``llm`` section.
+        system_prompt: Optional system prompt override. When None, uses the
+            default SYSTEM_PROMPT.
 
     Returns:
         A dict with ``messages`` and keyword arguments for
@@ -150,7 +172,7 @@ def build_openai_payload(prompt: str, config: dict) -> dict:
     return {
         "model": llm["model"],
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt or SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "temperature": llm["temperature"],

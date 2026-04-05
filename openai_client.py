@@ -85,11 +85,13 @@ class OpenAILLMClient:
         logger.info("OpenAI-compatible service reachable, model: %s", self.model)
         return True
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, system_prompt: str | None = None) -> str:
         """Generate text from the LLM using the given prompt.
 
         Args:
             prompt: The full prompt string to send.
+            system_prompt: Optional system prompt override. When None, uses
+                the default SYSTEM_PROMPT from prompt_template.
 
         Returns:
             The generated text from the LLM.
@@ -97,7 +99,7 @@ class OpenAILLMClient:
         Raises:
             LLMGenerationError: If generation fails after all retries.
         """
-        payload = build_openai_payload(prompt, self.config_dict)
+        payload = build_openai_payload(prompt, self.config_dict, system_prompt=system_prompt)
 
         last_exception: Exception | None = None
         for attempt in range(self.max_retries):
