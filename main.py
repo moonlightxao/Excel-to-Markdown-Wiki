@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="全量生成：故障现象、定界手段、恢复方案 + 恢复预案（需要 LLM）",
     )
+    parser.add_argument(
+        "--excel",
+        type=str,
+        default=None,
+        help="指定 Excel 文件路径，覆盖 config.yaml 中的配置",
+    )
     return parser.parse_args()
 
 
@@ -49,6 +55,10 @@ def main() -> int:
 
     # Load config
     config = load_config(Path("config.yaml"))
+
+    # CLI override for Excel file path
+    if args.excel:
+        config["excel"]["file_path"] = args.excel
 
     # Determine Excel file path
     excel_path = Path(config["excel"]["file_path"])

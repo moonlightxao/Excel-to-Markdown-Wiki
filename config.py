@@ -113,12 +113,12 @@ def deep_copy_dict(d: dict) -> dict:
 
 def apply_cli_overrides(config: dict[str, Any], args) -> dict[str, Any]:
     """Apply CLI argument overrides to config."""
-    if args.excel:
+    if getattr(args, "excel", None):
         config["excel"]["file_path"] = args.excel
-    if args.output:
+    if getattr(args, "output", None):
         config["output"]["directory"] = args.output
-    if args.model:
+    if getattr(args, "model", None):
         config["llm"]["model"] = args.model
-    if args.concurrency is not None:
+    if getattr(args, "concurrency", None) is not None:
         config["llm"]["concurrency"] = args.concurrency
     return config
