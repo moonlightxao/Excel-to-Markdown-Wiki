@@ -68,11 +68,19 @@ python main.py --sheets --excel path/to/data.xlsx
 # 全量生成：上述三个 + LLM 恢复预案
 python main.py --full
 
-# 全量生成 + 指定 Excel
-python main.py --full --excel path/to/data.xlsx
+# 全量生成 + 指定 Excel 和输出目录
+python main.py --full --excel path/to/data.xlsx --output path/to/output
 ```
 
-> Excel 路径和输出目录等配置可在 `config.py` 的 `DEFAULT_CONFIG` 中修改，`--excel` 参数优先级高于配置。
+> Excel 路径和输出目录等配置可在 `config.py` 的 `DEFAULT_CONFIG` 中修改，`--excel`、`--output` 参数优先级高于配置。
+
+## Agent 调用
+
+本项目已封装为 Agent Skill，详见 `SKILL.MD`。Agent 可通过以下命令调用：
+
+```bash
+python main.py --full --excel <用户提供的Excel路径> --output <用户提供的输出路径>
+```
 
 ### 输出目录
 

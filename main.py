@@ -37,6 +37,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="指定 Excel 文件路径，覆盖 config.py 中的配置",
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="指定输出目录路径，覆盖 config.py 中的配置",
+    )
     return parser.parse_args()
 
 
@@ -197,6 +203,8 @@ def main() -> int:
     # CLI override for Excel file path
     if args.excel:
         config["excel"]["file_path"] = args.excel
+    if args.output:
+        config["output"]["directory"] = args.output
 
     # Determine Excel file path
     excel_path = Path(config["excel"]["file_path"])
